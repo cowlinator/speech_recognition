@@ -297,14 +297,13 @@ class AudioData(object):
 
     Usually, instances of this class are obtained from ``recognizer_instance.record`` or ``recognizer_instance.listen``, or in the callback for ``recognizer_instance.listen_in_background``, rather than instantiating them directly.
     """
-    def __init__(self, frame_data, sample_rate, sample_width, phrase_start_time=None, phrase_end_time=None, eos_reached=False):
+    def __init__(self, frame_data, sample_rate, sample_width, phrase_start_time=None, eos_reached=False):
         assert sample_rate > 0, "Sample rate must be a positive integer"
         assert sample_width % 1 == 0 and 1 <= sample_width <= 4, "Sample width must be between 1 and 4 inclusive"
         self.frame_data = frame_data
         self.sample_rate = sample_rate
         self.sample_width = int(sample_width)
         self.phrase_start_time = phrase_start_time
-        self.phrase_end_time = phrase_end_time
         self.eos_reached = eos_reached # we reached the end of the stream, and there is no more audio (for now)
 
     def get_segment(self, start_ms=None, end_ms=None):
@@ -684,9 +683,8 @@ class Recognizer(AudioSource):
         frame_data = b"".join(frames)
 
         abs_phrase_start_time_secs = abs_listen_begin_time_secs + phrase_start_time
-        abs_phrase_end_time_secs = abs_listen_begin_time_secs + phrase_start_time + elapsed_time
 
-        return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH, abs_phrase_start_time_secs, abs_phrase_end_time_secs, eos_reached)
+        return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH, abs_phrase_start_time_secs, eos_reached)
 
     def listen_in_background(self, source, callback, phrase_time_limit=None):
         """
