@@ -297,7 +297,7 @@ class AudioData(object):
 
     Usually, instances of this class are obtained from ``recognizer_instance.record`` or ``recognizer_instance.listen``, or in the callback for ``recognizer_instance.listen_in_background``, rather than instantiating them directly.
     """
-    def __init__(self, frame_data, sample_rate, sample_width, phrase_start_time=None, phrase_end_time=None):
+    def __init__(self, frame_data, sample_rate, sample_width, phrase_start_time=None, phrase_end_time=None, eos_reached=False):
         assert sample_rate > 0, "Sample rate must be a positive integer"
         assert sample_width % 1 == 0 and 1 <= sample_width <= 4, "Sample width must be between 1 and 4 inclusive"
         self.frame_data = frame_data
@@ -305,6 +305,7 @@ class AudioData(object):
         self.sample_width = int(sample_width)
         self.phrase_start_time = phrase_start_time
         self.phrase_end_time = phrase_end_time
+        self.eos_reached = eos_reached # we reached the end of the stream, and there is no more audio (for now)
 
     def get_segment(self, start_ms=None, end_ms=None):
         """
@@ -604,10 +605,13 @@ class Recognizer(AudioSource):
         pause_buffer_count = int(math.ceil(self.pause_threshold / seconds_per_buffer))  # number of buffers of non-speaking audio during a phrase, before the phrase should be considered complete
         phrase_buffer_count = int(math.ceil(self.phrase_threshold / seconds_per_buffer))  # minimum number of buffers of speaking audio before we consider the speaking audio a phrase
         non_speaking_buffer_count = int(math.ceil(self.non_speaking_duration / seconds_per_buffer))  # maximum number of buffers of non-speaking audio to retain before and after a phrase
+                
+        abs_listen_begin_time_secs = float(source.stream.audio_reader.tell()) / float(source.SAMPLE_RATE)
 
         # read audio input for phrases until there is a phrase that is long enough
         elapsed_time = 0  # number of seconds of audio read
         buffer = b""  # an empty buffer means that the stream has ended and there is no data left to read
+        eos_reached = False # whether the end of the stream has been reached
         while True:
             frames = collections.deque()
 
@@ -620,7 +624,10 @@ class Recognizer(AudioSource):
                         raise WaitTimeoutError("listening timed out while waiting for phrase to start")
 
                     buffer = source.stream.read(source.CHUNK)
-                    if len(buffer) == 0: break  # reached end of the stream
+                    if len(buffer) == 0: 
+                        # reached end of the stream
+                        eos_reached = True
+                        break
                     frames.append(buffer)
                     if len(frames) > non_speaking_buffer_count:  # ensure we only keep the needed amount of non-speaking buffers
                         frames.popleft()
@@ -652,7 +659,10 @@ class Recognizer(AudioSource):
                     break
 
                 buffer = source.stream.read(source.CHUNK)
-                if len(buffer) == 0: break  # reached end of the stream
+                if len(buffer) == 0: 
+                    # reached end of the stream
+                    eos_reached = True
+                    break
                 frames.append(buffer)
                 phrase_count += 1
 
@@ -673,10 +683,10 @@ class Recognizer(AudioSource):
         for i in range(pause_count - non_speaking_buffer_count): frames.pop()  # remove extra non-speaking frames at the end
         frame_data = b"".join(frames)
 
-        phrase_duration = elapsed_time
-        phrase_end_time = phrase_start_time + phrase_duration
+        abs_phrase_start_time_secs = abs_listen_begin_time_secs + phrase_start_time
+        abs_phrase_end_time_secs = abs_listen_begin_time_secs + phrase_start_time + elapsed_time
 
-        return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH, phrase_start_time, phrase_end_time)
+        return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH, abs_phrase_start_time_secs, abs_phrase_end_time_secs, eos_reached)
 
     def listen_in_background(self, source, callback, phrase_time_limit=None):
         """
