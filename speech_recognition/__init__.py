@@ -297,12 +297,14 @@ class AudioData(object):
 
     Usually, instances of this class are obtained from ``recognizer_instance.record`` or ``recognizer_instance.listen``, or in the callback for ``recognizer_instance.listen_in_background``, rather than instantiating them directly.
     """
-    def __init__(self, frame_data, sample_rate, sample_width):
+    def __init__(self, frame_data, sample_rate, sample_width, phrase_start_time=None, phrase_end_time=None):
         assert sample_rate > 0, "Sample rate must be a positive integer"
         assert sample_width % 1 == 0 and 1 <= sample_width <= 4, "Sample width must be between 1 and 4 inclusive"
         self.frame_data = frame_data
         self.sample_rate = sample_rate
         self.sample_width = int(sample_width)
+        self.phrase_start_time = phrase_start_time
+        self.phrase_end_time = phrase_end_time
 
     def get_segment(self, start_ms=None, end_ms=None):
         """
@@ -671,7 +673,10 @@ class Recognizer(AudioSource):
         for i in range(pause_count - non_speaking_buffer_count): frames.pop()  # remove extra non-speaking frames at the end
         frame_data = b"".join(frames)
 
-        return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH)
+        phrase_duration = elapsed_time
+        phrase_end_time = phrase_start_time + phrase_duration
+
+        return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH, phrase_start_time, phrase_end_time)
 
     def listen_in_background(self, source, callback, phrase_time_limit=None):
         """
